@@ -60,15 +60,26 @@ Download Protein file in ./mkdata/train_proteinlist.txt and ./mkdata/retreival_p
 
 2-6. Create Multi-view image
 
-Dataset for train
+Dataset for train:
 
 `python takepic.py --mode pca --object pocket --input ./Polygons --output ./train`
 
 `python takepic.py --mode pca --object ligand --input ./Polygons --output ./train`
 
-Dataset for test
+Dataset for test:
 
 `python takepic.py --mode pca --object pocket --input ./Polygons --output ./test`
 
 `python takepic.py --mode pca --object ligand --input ./Polygons --output ./test`
 
+**3. Train**
+
+`$ cd ..`
+
+`$ mkdir model`
+
+`$ python train.py --epochs 20 --test True ./train ./test`
+
+**4. Retrieval ligand**
+
+`$ python retrieval.py --model model_xx.pth --global_pooling none --pooling average ./test`
