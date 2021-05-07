@@ -2,6 +2,8 @@
 
 1-1. Download source code
 
+`$ cd mkdata`
+
 get source code from <https://pdbj.org/ghecom/>
 
 1-2. makefile
@@ -16,6 +18,8 @@ get source code from <https://pdbj.org/ghecom/>
 
 2-1. Download Protein file from PDB[F.C.Bernstein et al. 1977]
 
+`$ cd ..`
+
 `$ mkdir PDB`
 
 Download Protein file in ./mkdata/train_proteinlist.txt and ./mkdata/retreival_proteinlist.txt from <https://www.rcsb.org/> to ./PDB
@@ -26,6 +30,33 @@ Download Protein file in ./mkdata/train_proteinlist.txt and ./mkdata/retreival_p
 
 `mkdir Pockets`
 
-`sh ./mkdata/findpoc.sh -l ./train_proteinlist.txt -i ./PDB -o ./Pockets`
+`sh findpoc.sh -l ./train_proteinlist.txt -i ./PDB -o ./Pockets`
 
-`sh ./mkdata/findpoc.sh -l ./retrieval_proteinlist.txt -i ./PDB -o ./Pockets`
+`sh findpoc.sh -l ./retrieval_proteinlist.txt -i ./PDB -o ./Pockets`
+
+2-3. Extract first cluster from ./Pockets to ./Pocket
+
+`$ mkdir Pocket`
+
+`sh createfile.sh -l ../train_proteinlist.txt -i ./Pockets -o ./Pocket`
+
+`sh createfile.sh -l ../retrieval_proteinlist.txt -i ./Pockets -o ./Pocket`
+
+`python makemol2.py --object pocket ./Pocket ../train_proteinlist.txt ./Pocket`
+
+2-4. Extract Ligand from Protein file
+
+`mkdir Ligand`
+
+`python makemol2.py --object ligand --json ../pldict.json ./PDB ../train_proteinlist.txt ./Ligand`
+
+2-5. Create TriangleMesh
+
+`mkdir Mesh`
+
+`python createmesh.py --object pocket ./Pocket ../train_proteinlist.txt ./Mesh`
+
+`python createmesh.py --object ligand ./Ligand ../train_proteinlist.txt ./Ligand`
+
+2-6. Create Multi-view image
+
