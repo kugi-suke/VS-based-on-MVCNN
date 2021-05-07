@@ -102,4 +102,6 @@ $ python train.py --epochs 20 --test True ./train ./test
 
 ## 4. Retrieval ligand
 
-`$ python retrieval.py --model model_xx.pth --global_pooling none --pooling average ./test`
+```
+$ python retrieval.py --model model_xx.pth --global_pooling none --pooling average ./test
+```
