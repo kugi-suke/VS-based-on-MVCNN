@@ -2,15 +2,19 @@
 
 ### 1-1. Download source code
 
-`$ cd mkdata`
+```
+$ cd mkdata
+```
 
 get source code from <https://pdbj.org/ghecom/>
 
 ### 1-2. makefile
 
-`$ cd src`
+```
+$ cd src
 
-`$ make`
+$ make
+```
 
 [T.kawabata, 2010] T.kawabata. Detection of multi-scale pockets on protein surfaces using mathematical morphology. Proteins,78, 1195-1121.
 
