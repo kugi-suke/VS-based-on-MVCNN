@@ -18,9 +18,11 @@ get source code from <https://pdbj.org/ghecom/>
 
 ### 2-1. Download Protein file from PDB[F.C.Bernstein et al. 1977]
 
-`$ cd ..`
+```
+$ cd ..
 
-`$ mkdir PDB`
+$ mkdir PDB
+```
 
 Download Protein file in ./mkdata/train_proteinlist.txt and ./mkdata/retreival_proteinlist.txt from <https://www.rcsb.org/> to ./PDB
 
@@ -28,57 +30,71 @@ Download Protein file in ./mkdata/train_proteinlist.txt and ./mkdata/retreival_p
 
 ### 2-2. Pocket Detection using ghecom
 
-`mkdir Pockets`
+```
+$ mkdir Pockets
 
-`sh findpoc.sh -l ./train_proteinlist.txt -i ./PDB -o ./Pockets`
+$ sh findpoc.sh -l ./train_proteinlist.txt -i ./PDB -o ./Pockets
 
-`sh findpoc.sh -l ./retrieval_proteinlist.txt -i ./PDB -o ./Pockets`
+$ sh findpoc.sh -l ./retrieval_proteinlist.txt -i ./PDB -o ./Pockets
+```
 
 ### 2-3. Extract first cluster from ./Pockets to ./Pocket
 
-`$ mkdir Pocket`
+```
+$ mkdir Pocket
 
-`sh createfile.sh -l ../train_proteinlist.txt -i ./Pockets -o ./Pocket`
+$ sh createfile.sh -l ../train_proteinlist.txt -i ./Pockets -o ./Pocket
 
-`sh createfile.sh -l ../retrieval_proteinlist.txt -i ./Pockets -o ./Pocket`
+$ sh createfile.sh -l ../retrieval_proteinlist.txt -i ./Pockets -o ./Pocket
 
-`python makemol2.py --object pocket ./Pocket ../train_proteinlist.txt ./Pocket`
+$ python makemol2.py --object pocket ./Pocket ../train_proteinlist.txt ./Pocket
+```
 
 ### 2-4. Extract Ligand from Protein file
 
-`mkdir Ligand`
+```
+$ mkdir Ligand
 
-`python makemol2.py --object ligand --json ../pldict.json ./PDB ../train_proteinlist.txt ./Ligand`
+$ python makemol2.py --object ligand --json ../pldict.json ./PDB ../train_proteinlist.txt ./Ligand
+```
 
 ### 2-5. Create TriangleMesh
 
-`mkdir Polygons`
+```
+$ mkdir Polygons
 
-`python createmesh.py --object pocket ./Pocket ../train_proteinlist.txt ./Polygons`
+$ python createmesh.py --object pocket ./Pocket ../train_proteinlist.txt ./Polygons
 
-`python createmesh.py --object ligand ./Ligand ../train_proteinlist.txt ./Ligand`
+$ python createmesh.py --object ligand ./Ligand ../train_proteinlist.txt ./Ligand
+```
 
 ### 2-6. Create Multi-view image
 
 Dataset for train:
 
-`python takepic.py --mode pca --object pocket --input ./Polygons --output ./train`
+```
+$ python takepic.py --mode pca --object pocket --input ./Polygons --output ./train
 
-`python takepic.py --mode pca --object ligand --input ./Polygons --output ./train`
+$ python takepic.py --mode pca --object ligand --input ./Polygons --output ./train
+```
 
 Dataset for test:
 
-`python takepic.py --mode pca --object pocket --input ./Polygons --output ./test`
+```
+$ python takepic.py --mode pca --object pocket --input ./Polygons --output ./test
 
-`python takepic.py --mode pca --object ligand --input ./Polygons --output ./test`
+$ python takepic.py --mode pca --object ligand --input ./Polygons --output ./test
+```
 
 ## 3. Train
 
-`$ cd ..`
+```
+$ cd ..
 
-`$ mkdir model`
+$ mkdir model
 
-`$ python train.py --epochs 20 --test True ./train ./test`
+$ python train.py --epochs 20 --test True ./train ./test
+```
 
 ## 4. Retrieval ligand
 
