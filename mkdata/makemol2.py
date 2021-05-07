@@ -1,6 +1,6 @@
 import sys
 import argparse
-sys.path.append('/home/kugimoto/.local/pymol-open-source-build/lib/python') # pymolをインポートするためにpath追加
+sys.path.append('Path to python in pymol') # add path
 import pymol
 import json
 
