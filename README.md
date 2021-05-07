@@ -1,4 +1,4 @@
-**1. Download ghecom[T.kawabata, 2010]**
+# 1. Download ghecom[T.kawabata, 2010]
 
 1-1. Download source code
 
@@ -14,7 +14,7 @@ get source code from <https://pdbj.org/ghecom/>
 
 [T.kawabata, 2010] T.kawabata. Detection of multi-scale pockets on protein surfaces using mathematical morphology. Proteins,78, 1195-1121.
 
-**2. Prepare Dataset**
+# 2. Prepare Dataset
 
 2-1. Download Protein file from PDB[F.C.Bernstein et al. 1977]
 
@@ -72,7 +72,7 @@ Dataset for test:
 
 `python takepic.py --mode pca --object ligand --input ./Polygons --output ./test`
 
-**3. Train**
+# 3. Train
 
 `$ cd ..`
 
@@ -80,6 +80,6 @@ Dataset for test:
 
 `$ python train.py --epochs 20 --test True ./train ./test`
 
-**4. Retrieval ligand**
+# 4. Retrieval ligand
 
 `$ python retrieval.py --model model_xx.pth --global_pooling none --pooling average ./test`
