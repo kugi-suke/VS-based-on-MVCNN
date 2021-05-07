@@ -52,11 +52,23 @@ Download Protein file in ./mkdata/train_proteinlist.txt and ./mkdata/retreival_p
 
 2-5. Create TriangleMesh
 
-`mkdir Mesh`
+`mkdir Polygons`
 
-`python createmesh.py --object pocket ./Pocket ../train_proteinlist.txt ./Mesh`
+`python createmesh.py --object pocket ./Pocket ../train_proteinlist.txt ./Polygons`
 
 `python createmesh.py --object ligand ./Ligand ../train_proteinlist.txt ./Ligand`
 
 2-6. Create Multi-view image
+
+Dataset for train
+
+`python takepic.py --mode pca --object pocket --input ./Polygons --output ./train`
+
+`python takepic.py --mode pca --object ligand --input ./Polygons --output ./train`
+
+Dataset for test
+
+`python takepic.py --mode pca --object pocket --input ./Polygons --output ./test`
+
+`python takepic.py --mode pca --object ligand --input ./Polygons --output ./test`
 
