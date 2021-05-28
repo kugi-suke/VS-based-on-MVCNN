@@ -21,8 +21,8 @@ class Network(nn.Module):
         super(Network, self).__init__()
 
         ## Alexnet model
-        self.alexnet_ligand = models.alexnet(pretrained=True)
-        self.alexnet_pocket = models.alexnet(pretrained=True)
+        self.features_ligand = models.alexnet(pretrained=True)
+        self.features_pocket = models.alexnet(pretrained=True)
 
     def forward(self, x, mode, global_pooling, pooling):
         x = x.numpy()
@@ -38,30 +38,30 @@ class Network(nn.Module):
 
             if global_pooling=='average':
                 for i in range(20):
-                    z = self.alexnet_ligand.features(x[i])  ## feature extractor
+                    z = self.features_ligand.features(x[i])  ## feature extractor
                     z = F.adaptive_avg_pool2d(z, (1,1))     ## global pooling layer
                     l_list.append(z)
                 for i in range(20, 40):
-                    z = self.alexnet_pocket.features(x[i])
+                    z = self.features_pocket.features(x[i])
                     z = F.adaptive_avg_pool2d(z, (1,1))
                     p_list.append(z)
 
             elif global_pooling=='max':
                 for i in range(20):
-                    z = self.alexnet_ligand.features(x[i])
+                    z = self.features_ligand.features(x[i])
                     z = F.adaptive_max_pool2d(z, (1,1))
                     l_list.append(z)
                 for i in range(20, 40):
-                    z = self.alexnet_pocket.features(x[i])
+                    z = self.features_pocket.features(x[i])
                     z = F.adaptive_max_pool2d(z, (1,1))
                     p_list.append(z)
 
             elif global_pooling=='none':
                 for i in range(20):
-                    z = self.alexnet_ligand.features(x[i])
+                    z = self.features_ligand.features(x[i])
                     l_list.append(z)
                 for i in range(20, 40):
-                    z = self.alexnet_pocket.features(x[i])
+                    z = self.features_pocket.features(x[i])
                     p_list.append(z)
 
             ## View Pooling layer
@@ -87,19 +87,19 @@ class Network(nn.Module):
 
             if global_pooling=='average':
                 for i in range(20):
-                    z = self.alexnet_pocket.features(x[i])
+                    z = self.features_pocket.features(x[i])
                     z = F.adaptive_avg_pool2d(z, (1,1))
                     p_list.append(z)
 
             elif global_pooling=='max':
                 for i in range(20):
-                    z = self.alexnet_pocket.features(x[i])
+                    z = self.features_pocket.features(x[i])
                     z = F.adaptive_max_pool2d(z, (1,1))
                     p_list.append(z)
 
             elif global_pooling=='none':
                 for i in range(20):
-                    z = self.alexnet_pocket.features(x[i])
+                    z = self.features_pocket.features(x[i])
                     p_list.append(z)
 
             if pooling=='average':
@@ -120,19 +120,19 @@ class Network(nn.Module):
 
             if global_pooling=='average':
                 for i in range(20):
-                    z = self.alexnet_ligand.features(x[i])
+                    z = self.features_ligand.features(x[i])
                     z = F.adaptive_avg_pool2d(z, (1,1))
                     l_list.append(z)
 
             elif global_pooling=='max':
                 for i in range(20):
-                    z = self.alexnet_ligand.features(x[i])
+                    z = self.features_ligand.features(x[i])
                     z = F.adaptive_max_pool2d(z, (1,1))
                     l_list.append(z)
 
             elif global_pooling=='none':
                 for i in range(20):
-                    z = self.alexnet_ligand.features(x[i])
+                    z = self.features_ligand.features(x[i])
                     l_list.append(z)
 
             if pooling=='average':
