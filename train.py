@@ -44,7 +44,6 @@ pdbids = open("./retrieval_proteinlist.txt", "r")
 def main():
     ##  Network initialize  ##
     net = Network(classes=2, arch=args.arch)  # defalt number of classes 2
-    #sys.exit()
     #net.load_state_dict(torch.load('./model/cs_globalmean/model_10.pth'))
     #print('Load model successfully')
 

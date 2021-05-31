@@ -17,14 +17,14 @@ class Network(nn.Module):
         super(Network, self).__init__()
 
         if arch=='res34':
-            self.alexnet_ligand = models.resnet34(pretrained=True)
-            self.alexnet_pocket = models.resnet34(pretrained=True)
+            self.features_ligand = nn.Sequential(*list(models.resnet34(pretrained=True).children())[:-2])
+            self.features_pocket = nn.Sequential(*list(models.resnet34(pretrained=True).children())[:-2])
+            self.size = 512
         else:
             ## Alexnet model
             self.features_ligand = models.alexnet(pretrained=True).features
             self.features_pocket = models.alexnet(pretrained=True).features
-            #self.alexnet_ligand = models.alexnet(pretrained=True)
-            #self.alexnet_pocket = models.alexnet(pretrained=True)
+            self.size = 256
 
         #self.apply(weights_init)
 
@@ -76,11 +76,11 @@ class Network(nn.Module):
                 poc = max(torch.stack(p_list), dim=0)[0]
 
             if global_pooling=='none':
-                lig = lig.view(lig.size(0), 256*6*6)
-                poc = poc.view(poc.size(0), 256*6*6)
+                lig = lig.view(lig.size(0), self.size*6*6)
+                poc = poc.view(poc.size(0), self.size*6*6)
             else:
-                lig = lig.view(lig.size(0), 256*1*1)
-                poc = poc.view(poc.size(0), 256*1*1)
+                lig = lig.view(lig.size(0), self.size*1*1)
+                poc = poc.view(poc.size(0), self.size*1*1)
 
             return lig, poc
 
@@ -111,9 +111,9 @@ class Network(nn.Module):
                 poc = max(torch.stack(p_list), dim=0)[0]
 
             if global_pooling=='none':
-                poc = poc.view(poc.size(0), 256*6*6)
+                poc = poc.view(poc.size(0), self.size*6*6)
             else:
-                poc = poc.view(poc.size(0), 256*1*1)
+                poc = poc.view(poc.size(0), self.size*1*1)
 
             return poc
 
