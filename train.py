@@ -19,8 +19,6 @@ parser.add_argument('train_data', metavar='DIR',
                     help='path to train dataset')
 parser.add_argument('test_data', metavar='DIR',
                     help='path to test dataset')
-parser.add_argument('-m', '--test', default=False, type=bool,
-                    metavar='N', help='only train or add test')
 parser.add_argument('-j', '--workers', default=20, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=100, type=int, metavar='N',
@@ -28,11 +26,14 @@ parser.add_argument('--epochs', default=100, type=int, metavar='N',
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('-b', '--batch-size', default=400, type=int,
-                    metavar='N', help='mini-batch size (default: 400)')
+                    metavar='N', help='mini-batch size (default: 256)')
+parser.add_argument('-a', '--arch', default='alex', type=str,
+                    metavar='ARCH', help='network for feature extractor')
 parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
                     metavar='LR', help='initial learning rate')
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
+
 args = parser.parse_args()
 
 cos = nn.CosineSimilarity()
@@ -42,7 +43,8 @@ pdbids = open("./retrieval_proteinlist.txt", "r")
 
 def main():
     ##  Network initialize  ##
-    net = Network()  # defalt number of classes 2
+    net = Network(classes=2, arch=args.arch)  # defalt number of classes 2
+    #sys.exit()
     #net.load_state_dict(torch.load('./model/cs_globalmean/model_10.pth'))
     #print('Load model successfully')
 
@@ -97,7 +99,6 @@ def main():
     steps = args.start_epoch
     iter_per_epoch = args.batch_size//40
 
-    ## Shuffle data
     imgs = []
     lbls = []
     image_list = []
@@ -126,7 +127,8 @@ def main():
         init_numdict[i] = numlist[i]
 
     for epoch in range(args.start_epoch, args.epochs):
-        if epoch%1==0 and epoch>args.start_epoch:
+        #if (epoch+1)%(int(list_length/2)-1)==0 and epoch>args.start_epoch:
+        if epoch%1==0 and epoch>19:
             path = modelpath + 'model_' + str(epoch) + '.pth'
             torch.save(net.state_dict(), path)
             print('>>>>>Save model successfully<<<<<')
@@ -165,8 +167,7 @@ def main():
                 if (i+1)==list_length:
                     print('>>>Epoch: %2d, Train_Loss: %.4f' %(epoch, sum_loss/list_length*iter_per_epoch))
                     sum_loss = 0
-                    if args.test:
-                        test(net, val_ploader, val_lloader, epoch)
+                    #test(net, val_ploader, val_lloader, epoch)
                 loss.backward()
                 optimizer.step()
                 loss = 0
@@ -249,7 +250,7 @@ def shuffle_set(list1, list2, num, num_dict):
 
     return nlist1, nlist2, num_dict
 
-## Shuffle Negative-pair
+
 def shuffle_fpair(images, labels, num, ndict, mode):
     ligand_list = []
     new_dict = {}

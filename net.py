@@ -1,9 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Wed Sep 13 15:57:01 2017
-
-@author: Biagio Brattoli
-"""
 import torch
 import torch.nn as nn
 from torch import cat, mean, max
@@ -14,15 +9,24 @@ import numpy as np
 
 import sys
 sys.path.append('Utils')
+#from Layers import LRN
 
 class Network(nn.Module):
 
-    def __init__(self, classes=2):
+    def __init__(self, classes=2, arch='alex'):
         super(Network, self).__init__()
 
-        ## Alexnet model
-        self.features_ligand = models.alexnet(pretrained=True)
-        self.features_pocket = models.alexnet(pretrained=True)
+        if arch=='res34':
+            self.alexnet_ligand = models.resnet34(pretrained=True)
+            self.alexnet_pocket = models.resnet34(pretrained=True)
+        else:
+            ## Alexnet model
+            self.features_ligand = models.alexnet(pretrained=True).features
+            self.features_pocket = models.alexnet(pretrained=True).features
+            #self.alexnet_ligand = models.alexnet(pretrained=True)
+            #self.alexnet_pocket = models.alexnet(pretrained=True)
+
+        #self.apply(weights_init)
 
     def forward(self, x, mode, global_pooling, pooling):
         x = x.numpy()
@@ -38,33 +42,32 @@ class Network(nn.Module):
 
             if global_pooling=='average':
                 for i in range(20):
-                    z = self.features_ligand.features(x[i])  ## feature extractor
-                    z = F.adaptive_avg_pool2d(z, (1,1))     ## global pooling layer
+                    z = self.features_ligand(x[i])
+                    z = F.adaptive_avg_pool2d(z, (1,1))
                     l_list.append(z)
                 for i in range(20, 40):
-                    z = self.features_pocket.features(x[i])
+                    z = self.features_pocket(x[i])
                     z = F.adaptive_avg_pool2d(z, (1,1))
                     p_list.append(z)
 
             elif global_pooling=='max':
                 for i in range(20):
-                    z = self.features_ligand.features(x[i])
+                    z = self.features_ligand(x[i])
                     z = F.adaptive_max_pool2d(z, (1,1))
                     l_list.append(z)
                 for i in range(20, 40):
-                    z = self.features_pocket.features(x[i])
+                    z = self.features_pocket(x[i])
                     z = F.adaptive_max_pool2d(z, (1,1))
                     p_list.append(z)
 
             elif global_pooling=='none':
                 for i in range(20):
-                    z = self.features_ligand.features(x[i])
+                    z = self.features_ligand(x[i])
                     l_list.append(z)
                 for i in range(20, 40):
-                    z = self.features_pocket.features(x[i])
+                    z = self.features_pocket(x[i])
                     p_list.append(z)
 
-            ## View Pooling layer
             if pooling=='average':
                 lig = mean(torch.stack(l_list), dim=0)
                 poc = mean(torch.stack(p_list), dim=0)
@@ -87,19 +90,19 @@ class Network(nn.Module):
 
             if global_pooling=='average':
                 for i in range(20):
-                    z = self.features_pocket.features(x[i])
+                    z = self.features_pocket(x[i])
                     z = F.adaptive_avg_pool2d(z, (1,1))
                     p_list.append(z)
 
             elif global_pooling=='max':
                 for i in range(20):
-                    z = self.features_pocket.features(x[i])
+                    z = self.features_pocket(x[i])
                     z = F.adaptive_max_pool2d(z, (1,1))
                     p_list.append(z)
 
             elif global_pooling=='none':
                 for i in range(20):
-                    z = self.features_pocket.features(x[i])
+                    z = self.features_pocket(x[i])
                     p_list.append(z)
 
             if pooling=='average':
@@ -120,19 +123,19 @@ class Network(nn.Module):
 
             if global_pooling=='average':
                 for i in range(20):
-                    z = self.features_ligand.features(x[i])
+                    z = self.features_ligand(x[i])
                     z = F.adaptive_avg_pool2d(z, (1,1))
                     l_list.append(z)
 
             elif global_pooling=='max':
                 for i in range(20):
-                    z = self.features_ligand.features(x[i])
+                    z = self.features_ligand(x[i])
                     z = F.adaptive_max_pool2d(z, (1,1))
                     l_list.append(z)
 
             elif global_pooling=='none':
                 for i in range(20):
-                    z = self.features_ligand.features(x[i])
+                    z = self.features_ligand(x[i])
                     l_list.append(z)
 
             if pooling=='average':
