@@ -27,6 +27,7 @@ class Network(nn.Module):
             # self.classifier_ligand = nn.Sequential(*list(models.alexnet(pretrained=True).classifier.children())[:-1])
             # self.classifier_pocket = nn.Sequential(*list(models.alexnet(pretrained=True).classifier.children())[:-1])
             self.fc = nn.Linear(in_features=1, out_features=1, bias=True)
+            self.softmax = nn.Softmax(dim=0)
             self.size = 256
 
         #self.apply(weights_init)
@@ -42,8 +43,8 @@ class Network(nn.Module):
         if mode=='train':
             p_list = []
             l_list = []
-            testlist_l = []
-            testlist_p = []
+            lw_list = []
+            pw_list = []
             if global_pooling=='average':
                 for i in range(20):
                     z = self.features_ligand(x[i])
@@ -73,16 +74,16 @@ class Network(nn.Module):
                     p_list.append(z)
 
             if pooling=='average':
-                lig = torch.stack(l_list).transpose(0,2) # 256*(1*20*1*1)
-                poc = torch.stack(p_list).transpose(0,2) # 256*(1*20*1*1)
+                wlig = self.get_viewWeight(l_list) # 20*1*1*1
+                wpoc = self.get_viewWeight(p_list)
+                l_list = torch.stack(l_list) # 20*1*256*1*1
+                p_list = torch.stack(p_list) # 20*1*256*1*1
 
-                for i in range(256):
-                    z = self.fc(lig[i])
-                    print(z.shape)
-                    sys.exit()
+                lw_list = self.get_weightedFeature(l_list, wlig)
+                pw_list = self.get_weightedFeature(p_list, wpoc)
 
-                lig = mean(torch.stack(l_list), dim=0)
-                poc = mean(torch.stack(p_list), dim=0)
+                lig = mean(torch.stack(lw_list), dim=0)
+                poc = mean(torch.stack(pw_list), dim=0)
             elif pooling=='max':
                 lig = max(torch.stack(l_list), dim=0)[0]
                 poc = max(torch.stack(p_list), dim=0)[0]
@@ -99,6 +100,7 @@ class Network(nn.Module):
         ## Network for only pocket
         elif mode=='pocket':
             p_list = []
+            pw_list = []
 
             if global_pooling=='average':
                 for i in range(20):
@@ -115,24 +117,30 @@ class Network(nn.Module):
             elif global_pooling=='none':
                 for i in range(20):
                     z = self.features_pocket(x[i])
+                    zw = F.adaptive_avg_pool2d(z, (1,1))
                     p_list.append(z)
+                    pw_list.append(zw)
 
+            wpoc = self.get_viewWeight(pw_list)
+            p_list = torch.stack(p_list) # 20*1*256*1*1
+            pw_list = self.get_weightedFeature(p_list, wpoc)
             if pooling=='average':
-                poc = mean(torch.stack(p_list), dim=0)
+                wpoc = mean(torch.stack(pw_list), dim=0)
             elif pooling=='max':
-                poc = max(torch.stack(p_list), dim=0)[0]
+                wpoc = max(torch.stack(pw_list), dim=0)[0]
 
             if global_pooling=='none':
                 #print(poc.shape)
-                poc = poc.view(poc.size(0), self.size*6*6)
+                wpoc = wpoc.view(wpoc.size(0), self.size*6*6)
             else:
-                poc = poc.view(poc.size(0), self.size*1*1)
+                wpoc = wpoc.view(wpoc.size(0), self.size*1*1)
 
-            return poc
+            return wpoc
 
         ## Network for only ligand
         elif mode=='ligand':
             l_list = []
+            lw_list = []
 
             if global_pooling=='average':
                 for i in range(20):
@@ -149,19 +157,43 @@ class Network(nn.Module):
             elif global_pooling=='none':
                 for i in range(20):
                     z = self.features_ligand(x[i])
+                    zw = F.adaptive_avg_pool2d(z, (1,1))
                     l_list.append(z)
+                    lw_list.append(zw)
 
+            wlig = self.get_viewWeight(lw_list)
+            l_list = torch.stack(l_list) # 20*1*256*1*1
+            lw_list = self.get_weightedFeature(l_list, wlig)
             if pooling=='average':
-                lig = mean(torch.stack(l_list), dim=0)
+                wlig = mean(torch.stack(lw_list), dim=0)
             elif pooling=='max':
-                lig = max(torch.stack(l_list), dim=0)[0]
+                wlig = max(torch.stack(lw_list), dim=0)[0]
 
             if global_pooling=='none':
-                lig = lig.view(lig.size(0), self.size*6*6)
+                wlig = wlig.view(wlig.size(0), self.size*6*6)
             else:
-                lig = lig.view(lig.size(0), self.size*1*1)
+                wlig = wlig.view(wlig.size(0), self.size*1*1)
 
-            return lig
+            return wlig
+
+    def get_viewWeight(self, feature):
+        feature = torch.stack(feature).transpose(0,2) # 256*(1*20*1*1)
+        weight = []
+        for i in range(256):
+            weight.append(self.fc(feature[i]))
+
+        weight = torch.stack(weight).transpose(0,2) # 20*(1*256*1*1)
+        weight = torch.sum(weight, 2) # 20*1*1*1
+        weight = self.softmax(weight) # 20*1*1*1
+
+        return weight
+
+    def get_weightedFeature(self, feature, weight):
+        wfeature = []
+        for i in range(20):
+            wfeature.append(torch.mul(feature[i], weight[i]))
+        return wfeature
+
 
 def weights_init(model):
     if type(model) in [nn.Conv2d,nn.Linear]:
