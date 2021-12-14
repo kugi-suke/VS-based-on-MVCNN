@@ -4,6 +4,8 @@ from time import time
 from tqdm import tqdm
 import random
 import gc
+from pathlib import Path
+from PIL import Image
 
 import torch
 import torch.nn as nn
@@ -11,6 +13,9 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 from torch.autograd import Variable
 import torchvision.models as models
+from torch.utils.data import Dataset
+
+import matplotlib.pyplot as plt
 
 from net import Network
 
@@ -19,7 +24,7 @@ parser.add_argument('train_data', metavar='DIR',
                     help='path to train dataset')
 parser.add_argument('test_data', metavar='DIR',
                     help='path to test dataset')
-parser.add_argument('-j', '--workers', default=20, type=int, metavar='N',
+parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=100, type=int, metavar='N',
                     help='number of total epochs to run')
@@ -27,8 +32,12 @@ parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('-b', '--batch-size', default=400, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
+parser.add_argument('-m', '--model', default='', type=str,
+                    metavar='N', help='using trained model')
 parser.add_argument('-a', '--arch', default='alex', type=str,
                     metavar='ARCH', help='network for feature extractor')
+parser.add_argument('-d', '--device', default=None, type=str,
+                    metavar='DEV', help='using device')
 parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
                     metavar='LR', help='initial learning rate')
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
@@ -36,38 +45,80 @@ parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
 
 args = parser.parse_args()
 
-cos = nn.CosineSimilarity()
+if args.device is None:
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+else:
+    device = torch.device(args.device)
 
-modelpath = './model/test/'
-pdbids = open("./retrieval_proteinlist.txt", "r")
+cos = nn.CosineSimilarity().to(device)
+
+modelpath = './model/gpu/sta2/'
+
+class MVIDataset(Dataset):
+    def __init__(self, mvi_dir, transform=None):
+        self.dir_path = mvi_dir
+        self.img_paths = [str(p) for p in Path(self.dir_path).glob("**/*.png")]
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.img_paths)//40
+
+    def __getitem__(self, index):
+        imgs_lig = []
+        imgs_poc = []
+        paths_lig =[]
+        paths_poc = []
+        for i in range(20):
+            path = self.img_paths[index*40 + i]
+
+            img = Image.open(path)
+            if self.transform is not None:
+                img = self.transform(img)
+            imgs_lig.append(img)
+            paths_lig.append(path.split('/')[-1])
+
+        for i in range(20, 40):
+            path = self.img_paths[index*40 + i]
+
+            img = Image.open(path)
+            if self.transform is not None:
+                img = self.transform(img)
+            imgs_poc.append(img)
+            paths_poc.append(path.split('/')[-1])
+
+        pdbid = path.split('/')[-3]
+
+        return imgs_lig, imgs_poc, paths_lig, paths_poc, pdbid
 
 def main():
     ##  Network initialize  ##
     net = Network(classes=2, arch=args.arch)  # defalt number of classes 2
-    #net.load_state_dict(torch.load('./model/cs_globalmean/model_10.pth'))
-    #print('Load model successfully')
+    net.to(device)
+    if args.model!='':
+        net.load_state_dict(torch.load(args.model))
+        print('Load model successfully')
 
     ##  define loss function (criterion) and optimizer  ##
-    criterion = nn.CosineEmbeddingLoss().cuda()
+    criterion = nn.CosineEmbeddingLoss().to(device)
     optimizer = torch.optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay = 1e-4)
 
     ##  Data loading  ##
-    traindir = os.path.join(args.train_data, 'train')
+    traindir = os.path.join(args.train_data)
     valpdir   = os.path.join(args.test_data, 'pocket')
     valldir   = os.path.join(args.test_data, 'ligand')
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
-    num_classes = len([name for name in os.listdir(traindir)]) - 1
-    print("num_classes = '{}'".format(num_classes))
+    transform = transforms.Compose([
+                    transforms.ToTensor(),  ## (height x width, channel),(0-255) -> (channel x height x width),(0.0-1.0)
+                    normalize,              ## GRB の正規化
+                ])
+    train_classes = len([name for name in os.listdir(traindir)])# - 1
+    val_classes = len([name for name in os.listdir(valpdir)])# - 2
+    print("train_classes = '{}', val_classes = '{}'".format(train_classes, val_classes))
 
-    train_data = datasets.ImageFolder(  ## train/tdata, fdata
-        traindir,
-        transforms.Compose([
-            transforms.ToTensor(),  ## (height x width, channel),(0-255) -> (channel x height x width),(0.0-1.0)
-            normalize,              ## GRB の正規化
-        ]))
+    train_data = MVIDataset(traindir, transform)
     train_loader = torch.utils.data.DataLoader(dataset=train_data,
-                                            batch_size=args.batch_size,
+                                            batch_size=1,
                                             shuffle=False,
                                             num_workers=args.workers)
 
@@ -94,124 +145,109 @@ def main():
                                             num_workers=args.workers)
 
     ##  Train  ##
-    print(('Start training: lr %f, batch size %d, classes %d'%(args.lr, args.batch_size, num_classes)))
-    steps = args.start_epoch
-    iter_per_epoch = args.batch_size//40
+    print(('Start training: lr %f, batch size %d, classes %d, with %s'%(args.lr, args.batch_size, train_classes, str(device))))
 
-    imgs = []
+    imgs_poc = []
+    imgs_lig = []
     lbls = []
-    image_list = []
-    label_list = []
-    for i, (images, labels) in enumerate(train_loader):
-        imgs.append(images)
-        lbls.append(labels)
+    for i, (images1, images2, paths1, paths2, labels) in enumerate(train_loader):
+        imgs_lig.append(images1)
+        imgs_poc.append(images2)
+        lbls.append(labels[0])
+        # print(paths1)
+        # sys.exit()
 
-    shuffle_list = [i*40 for i in range(iter_per_epoch*len(imgs))]
-    random.shuffle(shuffle_list)
+    batch_set_size = args.batch_size//40
+    best_acc = [0, 0, 0]
 
-    list_length = iter_per_epoch*len(imgs)
-    for i in range(list_length):
-        s = shuffle_list[i]//args.batch_size
-        f = shuffle_list[i]%args.batch_size
-        image_list.append(imgs[s][f:f+40])
-        label_list.append(lbls[s][f:f+40])
-
-    init_numdict = {}
-    numlist = []
-    for i in range(list_length):
-        if label_list[i][0].tolist()==0:
-            numlist.append(i)
-
-    for i in range(int(list_length/2)):
-        init_numdict[i] = numlist[i]
-
-    for epoch in range(args.start_epoch, args.epochs):
-        #if (epoch+1)%(int(list_length/2)-1)==0 and epoch>args.start_epoch:
-        if epoch%1==0 and epoch>19:
-            path = modelpath + 'model_' + str(epoch) + '.pth'
-            torch.save(net.state_dict(), path)
-            print('>>>>>Save model successfully<<<<<')
+    for epoch in range(args.start_epoch, args.start_epoch+args.epochs):
 
         loss = 0
         sum_loss = 0
+        index = get_train_index(train_classes)
 
-        if (epoch+1)%(int(list_length/2)-1)==0 and epoch>0:
-            image_list, init_numdict = shuffle_fpair(image_list, label_list, list_length, init_numdict, 1)
-            print('Shuffle mode >>>> 1')
-        else:
-            image_list, init_numdict = shuffle_fpair(image_list, label_list, list_length, init_numdict, 0)
-            print('Shuffle mode >>>> 0')
+        for i in range(train_classes*2):
+            label_lig = index[i][0]
+            label_poc = index[i][1]
 
-        image_list, label_list, init_numdict = shuffle_set(image_list, label_list, list_length, init_numdict)
-
-        for i , (images, lables) in enumerate(zip(image_list, label_list)):
-            images = Variable(image_list[i])
-            labels = Variable(label_list[i])
-
-            # Forward + Backward + Optimize
-            label = torch.tensor([labels[0]])
-            label = label*2-1
+            images = torch.cat([torch.stack(imgs_lig[label_lig], dim=0), torch.stack(imgs_poc[label_poc], dim=0)], dim=0)
+            images = images.to(device)
 
             optimizer.zero_grad()
+            output_lig, output_poc, w = net(images, 0, 'train', 'max', 'average')
+            # sim = cos(output_lig, output_poc)
 
-            output_lig, output_poc = net(images, 'train', 'max', 'max')
+            loss += criterion(output_lig, output_poc, torch.tensor(index[i][2]).to(device))
 
-            sim = cos(output_lig, output_poc)
-            loss += criterion(output_lig, output_poc, label.type_as(output_lig))
-
-            if (i+1)%(iter_per_epoch)==0 and i>0:
-                loss /= iter_per_epoch  ## calculate loss average
+            if (i+1)%(batch_set_size)==0 and i>0:
+                loss /= batch_set_size  ## calculate loss average
                 sum_loss += loss
-                print('Epoch: %2d, iter: %2d, Loss: %.4f' %(epoch, i+1, loss))
-                if (i+1)==list_length:
-                    print('>>>Epoch: %2d, Train_Loss: %.4f' %(epoch, sum_loss/list_length*iter_per_epoch))
+                # print('Epoch: %2d, iter: %2d, Loss: %.4f' %(epoch, i+1, loss))
+                if (i+1)==train_classes*2:
+                    val_acc = test(net, val_classes, val_ploader, val_lloader)
+                    print('>>>Epoch: %2d, Train_Loss: %.4f, Top1: %.2f, Top5 %.2f, Top10 %.2f' %(epoch+1, sum_loss/batch_set_size, val_acc[0], val_acc[1], val_acc[2]), end='')
+                    # print('>>>Epoch: %2d, Train_Loss: %.4f' %(epoch, sum_loss/batch_set_size))
                     sum_loss = 0
-                    #test(net, val_ploader, val_lloader, epoch)
+                    if is_improved(best_acc, val_acc):
+                        best_acc = np.max([best_acc, val_acc], axis=0).tolist()
+                        path = modelpath + 'model_' + str(epoch) + '.pth'
+                        torch.save(net.state_dict(), path)
+                        print('   *')
+                    else:
+                        print('')
+
                 loss.backward()
                 optimizer.step()
                 loss = 0
 
-def test(net, val_ploader, val_lloader, epoch):
-    print('Evaluating network.......')
+def test(net, val_classes, val_ploader, val_lloader):
+    # pdbids = open("../MN40list.txt", "r")
+    pdbids = open("./retrieval_proteinlist.txt", "r")
     net.eval()
-    top01, top05, top10 =0, 0, 0
-    for i, (pimage, plabel) in enumerate(val_ploader):
-        poc_image = Variable(pimage)
-        poc_label = Variable(plabel[0])
-        output_poc = net(poc_image, 'pocket', 'none', 'max')
-        #print('poc_label: ', poc_label)
-        outputs = {}
-        results = {}
-        for j, (limage, llabel) in enumerate(val_lloader):
-            lig_image = Variable(limage)
-            lig_label = Variable(llabel[0])
+    top01, top05, top10 = 0, 0, 0
+    sum_time = 0
 
-            images = torch.cat((lig_image, poc_image), 0)
-            ## Estimate similarity
-            output_lig = net(lig_image, 'ligand', 'none', 'max')
-            sim = cos(output_lig, output_poc)
+    with torch.no_grad():
+        for i, ((pimage, plabel), pid) in enumerate(zip(val_ploader, pdbids)):
+            start_time = time()
 
-            outputs[lig_label.tolist()] = sim
+            poc_image = Variable(pimage).cuda() # 20*3*224*224
+            poc_label = Variable(plabel[0]).cuda()
+            fmap_poc = net(poc_image, 0, 'pocket', 'max', 'average')
 
-            ## Calculate accuracy
-            if j==57:
-                sortdic = sorted(outputs.items(), key=lambda x:x[1], reverse=True)
-                top10_label = [l[0] for l in sortdic[0:10]]
-                result = [s[0] for s in sortdic]
-                #print(result)
-                #print(top10_label)
-                topn = find_topn(result, poc_label.tolist())
-                print('Protein number %2d  finds Top %2d' %(poc_label.tolist(), topn))
-                prec01, prec05, prec10 = caltop10(poc_label.tolist(), top10_label)
-                top01 += prec01
-                top05 += prec05
-                top10 += prec10
-        #print('protein: %2d, top1: %.2f%%, top5: %.2f%%, top10: %.2f%%\n' %(i, top01/(i+1)*100, top05/(i+1)*100, top10/(i+1)*100))
+            outputs = {}
+            results = {}
+            for j, (limage, llabel) in enumerate(val_lloader):
+                lig_image = Variable(limage).cuda() # 20*3*224*224
+                lig_label = Variable(llabel[0]).cuda()
 
-    print('\n\n###   Virtual Screening for %2d proteins   ###' %(i+1))
-    print('Top1 Accuracy: %.4f%%, Top5 Accuracy: %.4f%%, Top10 Accuracy: %.4f%%' %(top01/(i+1)*100, top05/(i+1)*100, top10/(i+1)*100))
+                output_lig, output_poc, weights = net(lig_image, fmap_poc, 'attention', 'max', 'average')
 
+                sim = cos(output_lig, output_poc)
+                outputs[lig_label.tolist()] = sim
+
+                ## Calculate accuracy
+                if j==val_classes-1:
+                    sortdic = sorted(outputs.items(), key=lambda x:x[1], reverse=True)
+                    top10_label = [l[0] for l in sortdic[0:10]]
+                    # result = [s[0] for s in sortdic]
+                    # print(top10_label)
+                    # topn = find_topn(result, poc_label.tolist())
+                    # print('No. %2d  finds Top %2d' %(poc_label.tolist(), topn))kore
+                    prec01, prec05, prec10 = caltop10(poc_label.tolist(), top10_label)
+                    top01 += prec01
+                    top05 += prec05
+                    top10 += prec10
+            sum_time += time()-start_time
+            # print('Top1: %.2f%%, Top5: %.2f%%, Top10: %.2f%%\n' %(top01/(i+1)*100, top05/(i+1)*100, top10/(i+1)*100))kore
+
+        # print('\n\n###   Virtual Screening for %2d proteins   ###' %(i+1))kore
+        # print('Top1 Accuracy: %.2f%%, Top5 Accuracy: %.2f%%, Top10 Accuracy: %.2f%%' %(top01/(i+1)*100, top05/(i+1)*100, top10/(i+1)*100))
+        current_acc = [top01/val_classes*100, top05/val_classes*100, top10/val_classes*100]
     net.train()
+    pdbids.close()
+    return current_acc
+
 
 def caltop10(correct_label, top10_label):
     if correct_label==top10_label[0]:
@@ -230,54 +266,24 @@ def find_topn(result, label):
             return i+1
     return -1  ## error
 
+def get_train_index(length):
+    index = list(range(length))*2
+    status = [-1 for _ in range(length)] + [1 for _ in range(length)]
 
-def shuffle_set(list1, list2, num, num_dict):
-    nlist1 = []
-    nlist2 =[]
-    slist = [i for i in range(num)]
-    fdict = {}
-    random.shuffle(slist)
-
-    for i in range(num):
-        nlist1.append(list1[slist[i]])
-        nlist2.append(list2[slist[i]])
-        if list2[slist[i]][0].tolist()==0:
-            fdict[slist[i]] = i
-
-    for i in range(int(num/2)):
-        num_dict[i] = fdict[num_dict[i]]
-
-    return nlist1, nlist2, num_dict
-
-
-def shuffle_fpair(images, labels, num, ndict, mode):
-    ligand_list = []
-    new_dict = {}
-    for i in range(num):
-        ligand_list.append(images[i][0:20])
-
-    if mode==0:
-        for i in range(int(num/2)):
-            if i==0:
-                images[ndict[(int(num/2)-1)]][0:20] = ligand_list[ndict[i]]
-            else:
-                images[(ndict[i-1])][0:20] = ligand_list[ndict[i]]
-    else:
-        for i in range(int(num/2)):
-            if i==0:
-                images[ndict[(int(num/2)-2)]][0:20] = ligand_list[ndict[i]]
-            elif i==1:
-                images[ndict[(int(num/2)-1)]][0:20] = ligand_list[ndict[i]]
-            else:
-                images[(ndict[i-1])][0:20] = ligand_list[ndict[i]]
-
-    for i in range(int(num/2)):
-        if i==0:
-            new_dict[(int(num/2)-1)] = ndict[i]
+    tmplist = [i for i in range(length*2)]
+    random.shuffle(tmplist)
+    new_index = []
+    for i in range(length*2):
+        if status[tmplist[i]]==1:
+            new_index.append([index[tmplist[i]], index[tmplist[i]], 1])
         else:
-            new_dict[i-1] = ndict[i]
+            lot_list = list(range(0, index[tmplist[i]])) + list(range(index[tmplist[i]]+1, length))
+            new_index.append([index[tmplist[i]], random.choice(lot_list), -1])
 
-    return images, new_dict
+    return new_index
+
+def is_improved(best, current):
+    return best[0]<current[0] or best[1]<current[1] or best[2]<current[2]
 
 if __name__ == '__main__':
     main()

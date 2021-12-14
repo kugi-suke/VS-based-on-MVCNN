@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import torch
 import torch.nn as nn
 from torch import cat, mean, max
@@ -9,7 +8,8 @@ import numpy as np
 
 import sys
 sys.path.append('Utils')
-#from Layers import LRN
+
+cs = nn.CosineSimilarity(dim=0)
 
 class Network(nn.Module):
 
@@ -26,129 +26,99 @@ class Network(nn.Module):
             self.features_pocket = models.alexnet(pretrained=True).features
             self.size = 256
 
-        #self.apply(weights_init)
+            self.softmax = nn.Softmax(dim=0)
 
-    def forward(self, x, mode, global_pooling, pooling):
-        x = x.numpy()
-        x = np.expand_dims(x, 0)
-        x = torch.from_numpy(x)
-        B,T,C,H,W = x.size()
-        x = x.transpose(0,1)
+            self.conv1x1 = nn.Conv2d(256, 64, 1)
+            self.avg_pool = nn.AdaptiveAvgPool2d(1)
 
+    def forward(self, x, y=0, mode='train', global_pooling='average', pooling='average'):
         ## Network for ligand and pocket
         if mode=='train':
-            p_list = []
-            l_list = []
+            x = x.view(40, 3, 224, 224)
+            lig = self.features_ligand(x[0:20])
+            poc = self.features_pocket(x[20:40])
 
             if global_pooling=='average':
-                for i in range(20):
-                    z = self.features_ligand(x[i])
-                    z = F.adaptive_avg_pool2d(z, (1,1))
-                    l_list.append(z)
-                for i in range(20, 40):
-                    z = self.features_pocket(x[i])
-                    z = F.adaptive_avg_pool2d(z, (1,1))
-                    p_list.append(z)
-
+                lig = F.adaptive_avg_pool2d(lig, (1,1))
+                poc = F.adaptive_avg_pool2d(poc, (1,1))
             elif global_pooling=='max':
-                for i in range(20):
-                    z = self.features_ligand(x[i])
-                    z = F.adaptive_max_pool2d(z, (1,1))
-                    l_list.append(z)
-                for i in range(20, 40):
-                    z = self.features_pocket(x[i])
-                    z = F.adaptive_max_pool2d(z, (1,1))
-                    p_list.append(z)
-
-            elif global_pooling=='none':
-                for i in range(20):
-                    z = self.features_ligand(x[i])
-                    l_list.append(z)
-                for i in range(20, 40):
-                    z = self.features_pocket(x[i])
-                    p_list.append(z)
+                lig = F.adaptive_max_pool2d(lig, (1,1))
+                poc = F.adaptive_max_pool2d(poc, (1,1))
 
             if pooling=='average':
-                lig = mean(torch.stack(l_list), dim=0)
-                poc = mean(torch.stack(p_list), dim=0)
+                lig = mean(lig, dim=0)
+                poc = mean(poc, dim=0)
             elif pooling=='max':
-                lig = max(torch.stack(l_list), dim=0)[0]
-                poc = max(torch.stack(p_list), dim=0)[0]
+                lig = max(lig, dim=0)[0]
+                poc = max(poc, dim=0)[0]
 
             if global_pooling=='none':
-                lig = lig.view(lig.size(0), self.size*6*6)
-                poc = poc.view(poc.size(0), self.size*6*6)
+                lig = lig.view(1, self.size*6*6)
+                poc = poc.view(1, self.size*6*6)
             else:
-                lig = lig.view(lig.size(0), self.size*1*1)
-                poc = poc.view(poc.size(0), self.size*1*1)
-
-            return lig, poc
+                lig = lig.view(1, self.size*1*1)
+                poc = poc.view(1, self.size*1*1)
+            return lig, poc, 0
 
         ## Network for only pocket
         elif mode=='pocket':
-            p_list = []
-
+            poc = self.features_pocket(x)
             if global_pooling=='average':
-                for i in range(20):
-                    z = self.features_pocket(x[i])
-                    z = F.adaptive_avg_pool2d(z, (1,1))
-                    p_list.append(z)
-
+                poc = F.adaptive_avg_pool2d(poc, (1,1))
             elif global_pooling=='max':
-                for i in range(20):
-                    z = self.features_pocket(x[i])
-                    z = F.adaptive_max_pool2d(z, (1,1))
-                    p_list.append(z)
-
-            elif global_pooling=='none':
-                for i in range(20):
-                    z = self.features_pocket(x[i])
-                    p_list.append(z)
-
-            if pooling=='average':
-                poc = mean(torch.stack(p_list), dim=0)
-            elif pooling=='max':
-                poc = max(torch.stack(p_list), dim=0)[0]
-
-            if global_pooling=='none':
-                poc = poc.view(poc.size(0), self.size*6*6)
-            else:
-                poc = poc.view(poc.size(0), self.size*1*1)
+                poc = F.adaptive_max_pool2d(poc, (1,1))
 
             return poc
 
         ## Network for only ligand
-        elif mode=='ligand':
-            l_list = []
+        elif mode=='attention':
+            lig = self.features_ligand(x)
 
             if global_pooling=='average':
-                for i in range(20):
-                    z = self.features_ligand(x[i])
-                    z = F.adaptive_avg_pool2d(z, (1,1))
-                    l_list.append(z)
-
+                lig = F.adaptive_avg_pool2d(lig, (1,1))
             elif global_pooling=='max':
-                for i in range(20):
-                    z = self.features_ligand(x[i])
-                    z = F.adaptive_max_pool2d(z, (1,1))
-                    l_list.append(z)
+                lig = F.adaptive_max_pool2d(lig, (1,1))
 
-            elif global_pooling=='none':
-                for i in range(20):
-                    z = self.features_ligand(x[i])
-                    l_list.append(z)
-
+            poc = y
             if pooling=='average':
-                lig = mean(torch.stack(l_list), dim=0)
+                lig = mean(lig, dim=0)
+                poc = mean(poc, dim=0)
             elif pooling=='max':
-                lig = max(torch.stack(l_list), dim=0)[0]
+                lig = max(lig, dim=0)[0]
+                poc = max(poc, dim=0)[0]
 
             if global_pooling=='none':
-                lig = lig.view(lig.size(0), 256*6*6)
+                lig = lig.view(1, self.size*6*6)
+                poc = poc.view(1, self.size*6*6)
             else:
-                lig = lig.view(lig.size(0), 256*1*1)
+                lig = lig.view(1, self.size*1*1)
+                poc = poc.view(1, self.size*1*1)
 
-            return lig
+            return lig, poc, 0
+
+    def get_viewWeight(self, feature):
+        feature = torch.stack(feature).transpose(0, 1) # 1*40*256*1*1
+        feature = self.conv1x1(feature[0]) # 40*64*1*1
+
+        feature = feature.transpose(0, 1)# 64*40*1*1
+        feature = feature.reshape(feature.size(0), -1) # 64*40
+
+        weight = []
+        for i in range(64):
+            weight.append(self.fc(feature[i]))
+
+        weight = torch.stack(weight).transpose(0,1) # 20*64
+        weight = torch.sum(weight, 1) # 20*1
+        weight = self.softmax(weight) # 20*1
+
+        return weight
+
+    def get_weightedFeature(self, feature, weight):
+        wfeature = []
+        for i in range(20):
+            wfeature.append(torch.mul(feature[i], weight[i]))
+        return torch.stack(wfeature)
+
 
 def weights_init(model):
     if type(model) in [nn.Conv2d,nn.Linear]:
