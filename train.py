@@ -1,10 +1,7 @@
 import os, sys, numpy as np
-from signal import valid_signals
 import argparse
 from time import time
-from tqdm import tqdm
 import random
-import gc
 from pathlib import Path
 from PIL import Image
 
@@ -15,8 +12,6 @@ import torchvision.datasets as datasets
 from torch.autograd import Variable
 import torchvision.models as models
 from torch.utils.data import Dataset
-
-import matplotlib.pyplot as plt
 
 import mlflow
 mlflow.set_tracking_uri('./mlruns/')
@@ -66,7 +61,7 @@ else:
 
 cos = nn.CosineSimilarity().to(device)
 
-modelpath = './model/gpu/res34-seb/'
+modelpath = 'path-to-checkpoint'
 
 class MVIDataset(Dataset):
     def __init__(self, mvi_dir, transform=None):
@@ -203,13 +198,13 @@ def main():
                     print('>> Epoch: %3dx, ' %(epoch+1), metrics)
                     sum_loss = 0
 
-                    # if is_improved(best_acc, val_acc):
-                    #     best_acc = np.max([best_acc, val_acc], axis=0).tolist()
-                    #     path = modelpath + 'model_' + str(epoch) + '.pth'
-                    #     torch.save(net.state_dict(), path)
-                    #     print('   *')
-                    # else:
-                    #     print('')
+                    if is_improved(best_acc, val_acc):
+                        best_acc = np.max([best_acc, val_acc], axis=0).tolist()
+                        path = modelpath + 'model_' + str(epoch) + '.pth'
+                        torch.save(net.state_dict(), path)
+                        print('   *')
+                    else:
+                        print('')
 
                 loss.backward()
                 optimizer.step()
@@ -230,7 +225,6 @@ def test(net, val_classes, val_ploader, val_lloader):
             fmap_poc = net(poc_image, 0, 'pocket', args.gp_val, args.p_val)
 
             outputs = {}
-            results = {}
             for j, (limage, llabel) in enumerate(val_lloader):
                 lig_image = Variable(limage).cuda() # 20*3*224*224
                 lig_label = Variable(llabel[0]).cuda()
@@ -244,10 +238,6 @@ def test(net, val_classes, val_ploader, val_lloader):
                 if j==val_classes-1:
                     sortdic = sorted(outputs.items(), key=lambda x:x[1], reverse=True)
                     top10_label = [l[0] for l in sortdic[0:10]]
-                    # result = [s[0] for s in sortdic]
-                    # print(top10_label)
-                    # topn = find_topn(result, poc_label.tolist())
-                    # print('No. %2d  finds Top %2d' %(poc_label.tolist(), topn))kore
                     prec01, prec05, prec10 = caltop10(poc_label.tolist(), top10_label)
                     top01 += prec01
                     top05 += prec05
