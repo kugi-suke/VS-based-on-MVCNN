@@ -1,9 +1,7 @@
 import os, sys, numpy as np
 import argparse
 from time import time
-from tqdm import tqdm
 import random
-import gc
 from pathlib import Path
 from PIL import Image
 
@@ -15,7 +13,9 @@ from torch.autograd import Variable
 import torchvision.models as models
 from torch.utils.data import Dataset
 
-import matplotlib.pyplot as plt
+import mlflow
+mlflow.set_tracking_uri('./mlruns/')
+mlflow.set_experiment('mlflow-test')
 
 from net import Network
 
@@ -25,7 +25,7 @@ parser.add_argument('train_data', metavar='DIR',
 parser.add_argument('test_data', metavar='DIR',
                     help='path to test dataset')
 parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
-                    help='number of data loading workers (default: 4)')
+                    help='number of data loading workers (default: 8)')
 parser.add_argument('--epochs', default=100, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
@@ -36,6 +36,14 @@ parser.add_argument('-m', '--model', default='', type=str,
                     metavar='N', help='using trained model')
 parser.add_argument('-a', '--arch', default='alex', type=str,
                     metavar='ARCH', help='network for feature extractor')
+parser.add_argument('--gp-train', default='max', type=str,
+                    metavar='GPT', help='type of global pooling layer in train')
+parser.add_argument('--p-train', default='average', type=str,
+                    metavar='PT', help='type of pooling layer in train')
+parser.add_argument('--gp-val', default='none', type=str,
+                    metavar='GPV', help='type of global pooling layer in validation')
+parser.add_argument('--p-val', default='average', type=str,
+                    metavar='PV', help='type of pooling layer in validatoin')
 parser.add_argument('-d', '--device', default=None, type=str,
                     metavar='DEV', help='using device')
 parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
@@ -47,12 +55,13 @@ args = parser.parse_args()
 
 if args.device is None:
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    args.device = device
 else:
     device = torch.device(args.device)
 
 cos = nn.CosineSimilarity().to(device)
 
-modelpath = './model/gpu/sta2/'
+modelpath = 'path-to-checkpoint'
 
 class MVIDataset(Dataset):
     def __init__(self, mvi_dir, transform=None):
@@ -154,18 +163,17 @@ def main():
         imgs_lig.append(images1)
         imgs_poc.append(images2)
         lbls.append(labels[0])
-        # print(paths1)
-        # sys.exit()
 
     batch_set_size = args.batch_size//40
     best_acc = [0, 0, 0]
-
+    active_run = mlflow.active_run()
+    mlflow.log_params(vars(args))
+    metrics = {'train_loss': 0.0, 'val_acc_top01': 0.0, 'val_acc_top05': 0.0, 'val_acc_top10': 0.0}
     for epoch in range(args.start_epoch, args.start_epoch+args.epochs):
 
         loss = 0
         sum_loss = 0
         index = get_train_index(train_classes)
-
         for i in range(train_classes*2):
             label_lig = index[i][0]
             label_poc = index[i][1]
@@ -174,20 +182,22 @@ def main():
             images = images.to(device)
 
             optimizer.zero_grad()
-            output_lig, output_poc, w = net(images, 0, 'train', 'max', 'average')
-            # sim = cos(output_lig, output_poc)
+            output_lig, output_poc, w = net(images, 0, 'train', args.gp_train, args.p_train)
 
             loss += criterion(output_lig, output_poc, torch.tensor(index[i][2]).to(device))
 
             if (i+1)%(batch_set_size)==0 and i>0:
                 loss /= batch_set_size  ## calculate loss average
                 sum_loss += loss
-                # print('Epoch: %2d, iter: %2d, Loss: %.4f' %(epoch, i+1, loss))
+
                 if (i+1)==train_classes*2:
-                    val_acc = test(net, val_classes, val_ploader, val_lloader)
-                    print('>>>Epoch: %2d, Train_Loss: %.4f, Top1: %.2f, Top5 %.2f, Top10 %.2f' %(epoch+1, sum_loss/batch_set_size, val_acc[0], val_acc[1], val_acc[2]), end='')
-                    # print('>>>Epoch: %2d, Train_Loss: %.4f' %(epoch, sum_loss/batch_set_size))
+                    metrics['val_acc_top01'], metrics['val_acc_top05'], metrics['val_acc_top10'] = test(net, val_classes, val_ploader, val_lloader)
+                    metrics['train_loss'] = float(sum_loss/batch_set_size)
+                    mlflow.log_metrics(metrics)
+
+                    print('>> Epoch: %3dx, ' %(epoch+1), metrics)
                     sum_loss = 0
+
                     if is_improved(best_acc, val_acc):
                         best_acc = np.max([best_acc, val_acc], axis=0).tolist()
                         path = modelpath + 'model_' + str(epoch) + '.pth'
@@ -201,7 +211,6 @@ def main():
                 loss = 0
 
 def test(net, val_classes, val_ploader, val_lloader):
-    # pdbids = open("../MN40list.txt", "r")
     pdbids = open("./retrieval_proteinlist.txt", "r")
     net.eval()
     top01, top05, top10 = 0, 0, 0
@@ -213,15 +222,14 @@ def test(net, val_classes, val_ploader, val_lloader):
 
             poc_image = Variable(pimage).cuda() # 20*3*224*224
             poc_label = Variable(plabel[0]).cuda()
-            fmap_poc = net(poc_image, 0, 'pocket', 'max', 'average')
+            fmap_poc = net(poc_image, 0, 'pocket', args.gp_val, args.p_val)
 
             outputs = {}
-            results = {}
             for j, (limage, llabel) in enumerate(val_lloader):
                 lig_image = Variable(limage).cuda() # 20*3*224*224
                 lig_label = Variable(llabel[0]).cuda()
 
-                output_lig, output_poc, weights = net(lig_image, fmap_poc, 'attention', 'max', 'average')
+                output_lig, output_poc, weights = net(lig_image, fmap_poc, 'attention', args.gp_val, args.p_val)
 
                 sim = cos(output_lig, output_poc)
                 outputs[lig_label.tolist()] = sim
@@ -230,24 +238,15 @@ def test(net, val_classes, val_ploader, val_lloader):
                 if j==val_classes-1:
                     sortdic = sorted(outputs.items(), key=lambda x:x[1], reverse=True)
                     top10_label = [l[0] for l in sortdic[0:10]]
-                    # result = [s[0] for s in sortdic]
-                    # print(top10_label)
-                    # topn = find_topn(result, poc_label.tolist())
-                    # print('No. %2d  finds Top %2d' %(poc_label.tolist(), topn))kore
                     prec01, prec05, prec10 = caltop10(poc_label.tolist(), top10_label)
                     top01 += prec01
                     top05 += prec05
                     top10 += prec10
             sum_time += time()-start_time
-            # print('Top1: %.2f%%, Top5: %.2f%%, Top10: %.2f%%\n' %(top01/(i+1)*100, top05/(i+1)*100, top10/(i+1)*100))kore
 
-        # print('\n\n###   Virtual Screening for %2d proteins   ###' %(i+1))kore
-        # print('Top1 Accuracy: %.2f%%, Top5 Accuracy: %.2f%%, Top10 Accuracy: %.2f%%' %(top01/(i+1)*100, top05/(i+1)*100, top10/(i+1)*100))
-        current_acc = [top01/val_classes*100, top05/val_classes*100, top10/val_classes*100]
     net.train()
     pdbids.close()
-    return current_acc
-
+    return top01/val_classes, top05/val_classes, top10/val_classes
 
 def caltop10(correct_label, top10_label):
     if correct_label==top10_label[0]:
