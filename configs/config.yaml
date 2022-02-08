@@ -1,0 +1,17 @@
+TRAIN:
+  DATASET: 'path_to_train_dataset'
+  BATCH_SIZE: 400
+  EPOCHS: 3
+  START_EPOCH: 0
+  CHECKPOINT_FILE_PATH: ''
+  LEARNING_RATE: 0.001
+VAL:
+  DATASET: 'path_to_validation_dataset'
+DATA_LOADER:
+  NUM_WORKERS: 8
+NETWORK:
+  ARCH: alex
+  GP_TRAIN: max
+  GP_VAL: none
+  P_TRAIN: average
+  P_VAL: average
