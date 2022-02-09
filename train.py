@@ -63,7 +63,7 @@ class MVIDataset(Dataset):
 def main(cfg):
     config = cfg
     mlflow.set_tracking_uri('file://' + hydra.utils.get_original_cwd() + '/mlruns')
-    mlflow.set_experiment('mlflow-test')
+    mlflow.set_experiment('mlflow-hydra-test')
 
     ##  Network initialize  ##
     net = Network(classes=2, arch=cfg.NETWORK.ARCH)  # defalt number of classes 2
@@ -132,7 +132,7 @@ def main(cfg):
     batch_set_size = cfg.TRAIN.BATCH_SIZE//40
     best_acc = [0, 0, 0]
     active_run = mlflow.active_run()
-    # mlflow.log_params(vars(args))
+    mlflow.log_params(config)
     metrics = {'train_loss': 0.0, 'val_acc_top01': 0.0, 'val_acc_top05': 0.0, 'val_acc_top10': 0.0}
     for epoch in range(cfg.TRAIN.START_EPOCH, cfg.TRAIN.START_EPOCH+cfg.TRAIN.EPOCHS):
 
@@ -158,7 +158,7 @@ def main(cfg):
                 if (i+1)==train_classes*2:
                     metrics['val_acc_top01'], metrics['val_acc_top05'], metrics['val_acc_top10'] = test(cfg.NETWORK, net, val_classes, val_ploader, val_lloader)
                     metrics['train_loss'] = float(sum_loss/batch_set_size)
-                    mlflow.log_metrics(metrics)
+                    mlflow.log_metrics(metrics, step=epoch+1)
 
                     print('>> Epoch: %3d, ' %(epoch+1), metrics)
                     sum_loss = 0
