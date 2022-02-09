@@ -97,7 +97,7 @@ $ cd ..
 
 $ mkdir model
 
-$ python train.py --epochs 20 --test True ./train ./test
+$ python train.py
 ```
 
 ## 4. Retrieval ligand
