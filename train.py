@@ -1,5 +1,6 @@
 import os, sys, numpy as np
 from time import time
+from tqdm import tqdm
 import random
 from pathlib import Path
 from PIL import Image
@@ -59,7 +60,7 @@ class MVIDataset(Dataset):
 
         return imgs_lig, imgs_poc, paths_lig, paths_poc, pdbid
 
-@hydra.main(config_path='../configs', config_name='config.yaml')
+@hydra.main(config_path='', config_name='config.yaml')
 def main(cfg):
     config = cfg
     mlflow.set_tracking_uri('file://' + hydra.utils.get_original_cwd() + '/mlruns')
@@ -156,46 +157,37 @@ def main(cfg):
                 sum_loss += loss
 
                 if (i+1)==train_classes*2:
-                    metrics['val_acc_top01'], metrics['val_acc_top05'], metrics['val_acc_top10'] = test(cfg.NETWORK, net, val_classes, val_ploader, val_lloader)
+                    metrics['val_acc_top01'], metrics['val_acc_top05'], metrics['val_acc_top10'] = test(cfg, net, val_classes, val_ploader, val_lloader)
                     metrics['train_loss'] = float(sum_loss/batch_set_size)
                     mlflow.log_metrics(metrics, step=epoch+1)
 
                     print('>> Epoch: %3d, ' %(epoch+1), metrics)
                     sum_loss = 0
 
-                    if is_improved(best_acc, val_acc):
-                        best_acc = np.max([best_acc, val_acc], axis=0).tolist()
-                        path = modelpath + 'model_' + str(epoch) + '.pth'
-                        torch.save(net.state_dict(), path)
-                        print('   *')
-                    else:
-                        print('')
-
                 loss.backward()
                 optimizer.step()
                 loss = 0
 
-def test(cfgnet, net, val_classes, val_ploader, val_lloader):
-    pdbids = open("/home/kugimoto/VS/AMVCNN-SE/retrieval_proteinlist.txt", "r")
+def test(cfg, net, val_classes, val_ploader, val_lloader):
+    pdbids = open(cfg.VAL.PROTEINS, "r")
     net.eval()
     top01, top05, top10 = 0, 0, 0
     sum_time = 0
 
     with torch.no_grad():
-        for i, ((pimage, plabel), pid) in enumerate(zip(val_ploader, pdbids)):
+        for i, ((pimage, plabel), pid) in tqdm(enumerate(zip(val_ploader, pdbids)), total=val_classes, desc='validation', leave=False):
             start_time = time()
 
             poc_image = Variable(pimage).cuda() # 20*3*224*224
             poc_label = Variable(plabel[0]).cuda()
-            fmap_poc = net(poc_image, 0, 'pocket', cfgnet.GP_VAL, cfgnet.P_VAL)
+            fmap_poc = net(poc_image, 0, 'pocket', cfg.NETWORK.GP_VAL, cfg.NETWORK.P_VAL)
 
             outputs = {}
-            results = {}
             for j, (limage, llabel) in enumerate(val_lloader):
                 lig_image = Variable(limage).cuda() # 20*3*224*224
                 lig_label = Variable(llabel[0]).cuda()
 
-                output_lig, output_poc, weights = net(lig_image, fmap_poc, 'attention', cfgnet.GP_VAL, cfgnet.P_VAL)
+                output_lig, output_poc, weights = net(lig_image, fmap_poc, 'attention', cfg.NETWORK.GP_VAL, cfg.NETWORK.P_VAL)
 
                 sim = cos(output_lig, output_poc)
                 outputs[lig_label.tolist()] = sim

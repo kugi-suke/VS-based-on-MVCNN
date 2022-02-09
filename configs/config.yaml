@@ -7,6 +7,7 @@ TRAIN:
   LEARNING_RATE: 0.001
 VAL:
   DATASET: 'path_to_validation_dataset'
+  PROTEINS: 'path_to_proteinlist.txt'
 DATA_LOADER:
   NUM_WORKERS: 8
 NETWORK:
